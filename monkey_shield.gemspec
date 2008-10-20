@@ -14,8 +14,7 @@ Gem::Specification.new do |s|
     "Rakefile", 
     "monkey_shield.gemspec", 
     "lib/monkey_shield.rb", 
-    "lib/monkeyshield.rb", 
-    "lib/grit/tree.rb"]
+    "lib/monkeyshield.rb"]
   s.test_files = ["spec/monkey_shield_spec.rb",
       "spec/real_libs_spec_explicit.rb"]
   s.rdoc_options = ["--main", "README.txt"]
