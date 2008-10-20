@@ -1,0 +1,304 @@
+require 'spec'
+require File.dirname(__FILE__) + '/../lib/monkey_shield'
+
+$GLOBAL_SCOPE_BINDING = binding
+
+describe MonkeyShield do
+  def get_klasses
+    klasses = []; ObjectSpace.each_object(Module) {|k| klasses << k }; klasses
+  end
+
+  before do
+    MonkeyShield.reset!
+    @current_klasses = get_klasses
+  end
+
+  after do
+    (get_klasses - @current_klasses).each {|k| Object.send :remove_const, k.name }
+  end
+
+  it "aliasing a method then redefining it with the same name should not create an infinite loop" do 
+    MonkeyShield.wrap_with_context(:ggg) do
+      module X
+        def encoding= e
+          @encoding = e
+        end
+      end
+
+      class Y
+        include X
+
+        alias :old_enc= :encoding=
+        def encoding= e
+          if e.nil?
+            self.old_enc = 'UTF-8'
+          else
+            self.old_enc = e
+          end
+        end
+      end
+    end
+
+    proc { Y.new.encoding = 'abc' }.should_not raise_error
+  end
+
+  it "should be work in the global scope" do
+    eval(<<-EOF, $GLOBAL_SCOPE_BINDING)
+      MonkeyShield.wrap_with_context :lib1 do
+        def to_xml
+          "lib1 xml"
+        end
+      end
+
+      MonkeyShield.wrap_with_context :lib2 do
+        def to_xml
+          "lib2 xml"
+        end
+      end
+    EOF
+
+    MonkeyShield.context_switch_for Object, :to_xml
+
+    o = Object.new
+    proc { o.to_xml }.should raise_error(MonkeyShield::NoContextError)
+
+    MonkeyShield.in_context(:lib1) { o.to_xml }.should == "lib1 xml"
+    MonkeyShield.in_context(:lib2) { o.to_xml }.should == "lib2 xml"
+  end
+
+  it "methods of the same name should be able to exist peacefully in different contexts" do
+    MonkeyShield.wrap_with_context :lib1 do
+      class Object
+        def to_xml
+          "lib1 xml"
+        end
+      end
+
+      class Lib1
+        def x(o)
+          o.to_xml
+        end
+
+        def mycontext
+          MonkeyShield.current_context
+        end
+      end
+    end
+
+    MonkeyShield.wrap_with_context :lib2 do
+      class Object
+        def to_xml
+          "lib2 xml"
+        end
+      end
+
+      class Lib2
+        def x(o)
+          o.to_xml
+        end
+
+        def mycontext
+          MonkeyShield.current_context
+        end
+      end
+    end
+
+    Lib1.new.mycontext.should == :lib1
+    Lib2.new.mycontext.should == :lib2
+    MonkeyShield.current_context.should be_nil
+
+    MonkeyShield.context_switch_for Object, :to_xml
+
+    o = Object.new
+    Lib1.new.x(o).should == "lib1 xml"
+    Lib2.new.x(o).should == "lib2 xml"
+
+    proc { o.to_xml }.should raise_error(MonkeyShield::NoContextError)
+
+    MonkeyShield.set_default_context_for Object, :to_xml, :lib1
+    o.to_xml.should == "lib1 xml"
+
+    MonkeyShield.set_default_context_for Object, :to_xml, :lib2
+    o.to_xml.should == "lib2 xml"
+
+    # still works after setting default?
+    Lib1.new.x(o).should == "lib1 xml"
+    Lib2.new.x(o).should == "lib2 xml"
+  end
+
+  it "ignored method should not be wrapped in context" do
+    MonkeyShield.wrap_with_context(:ggg, ['M#ggg']) do
+      class A
+        def ggg
+          "ggg"
+        end
+
+        def hhh
+          "hhh"
+        end
+      end
+
+      module M
+        def ggg
+          super
+        end
+      end
+
+      module H
+        def hhh
+          super
+        end
+      end
+
+      class B < A
+        include M
+        include H
+      end
+    end
+
+    B.new.ggg.should == "ggg"
+    proc { B.new.hhh }.should raise_error(MonkeyShield::MethodDefinedInModuleCallsSuper)
+  end
+
+  it "oo visibility should be preserved" do
+    MonkeyShield.wrap_with_context :lib1 do
+      class Object
+        public
+          def pub; end
+        protected
+          def prot; end
+        private
+          def priv; end
+      end
+    end
+
+    Object.public_instance_methods.index('pub').should_not be_nil
+    Object.protected_instance_methods.index('prot').should_not be_nil
+    Object.private_instance_methods.index('priv').should_not be_nil
+  end
+
+  it "context switched methods calling context switched methods should work" do
+    MonkeyShield.wrap_with_context(:lib1) do
+      class Object
+        def to_xml
+          "lib1 xml"
+        end
+      end
+
+      class Array
+        def to_g
+          map { |o| o.to_xml }
+        end
+      end
+
+      class Lib1
+        def x(o)
+          o.to_g
+        end
+      end
+    end
+
+    MonkeyShield.wrap_with_context(:lib2) do
+      class Object
+        def to_xml
+          "lib2 xml"
+        end
+      end
+
+      class Array
+        def to_g
+          map { |o| o.to_xml + "huh" }
+        end
+      end
+
+      class Lib2
+        def x(o)
+          o.to_g
+        end
+      end
+    end
+
+    MonkeyShield.context_switch_for Array, :to_g
+    MonkeyShield.context_switch_for Object, :to_xml
+
+    o = Array.new(1)
+    Lib1.new.x(o).should == ["lib1 xml"]
+    Lib2.new.x(o).should == ["lib2 xmlhuh"]
+    MonkeyShield.current_context.should be_nil
+
+    MonkeyShield.set_default_context_for Array, :to_g, :lib1
+    o.to_g.should == ["lib1 xml"]
+    MonkeyShield.set_default_context_for Array, :to_g, :lib2
+    o.to_g.should == ["lib2 xmlhuh"]
+
+    Lib1.new.x(o).should == ["lib1 xml"]
+    Lib2.new.x(o).should == ["lib2 xmlhuh"]
+  end
+
+  it "the behavior of module_function should be preserved" do
+    MonkeyShield.wrap_with_context :fileutils do
+      module G
+        def x
+          :x
+        end
+        module_function :x
+      end
+
+      module H
+        module_function
+
+        def a
+          :a
+        end
+      end
+
+      class X
+        include G
+        include H
+      end
+    end
+
+    G.x.should == :x
+    H.a.should == :a
+
+    X.new.send(:x).should == :x
+    X.new.send(:a).should == :a
+  end
+
+  it "singleton methods should be context switchable" do
+    MonkeyShield.wrap_with_context :fileutils do
+      module FileUtils
+        def self.mkdir_p
+          mkdir
+        end
+
+        def self.mkdir
+          "blah!"
+        end
+      end
+    end
+
+    MonkeyShield.wrap_with_context :my_fileutils do
+      module FileUtils
+        def self.mkdir
+          "not blah!"
+        end
+      end
+    end
+
+    MonkeyShield.context_switch_for((class << FileUtils; self; end), :mkdir)
+    FileUtils.mkdir_p.should == "blah!"
+  end
+
+  it "irregular method names should be handled" do
+    MonkeyShield.wrap_with_context :lib1 do
+      class Object
+        define_method "abc[def]abc" do
+          :hehe
+        end
+      end
+    end
+
+    Object.send("abc[def]abc").should == :hehe
+  end
+end

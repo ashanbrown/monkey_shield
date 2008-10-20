@@ -1,0 +1,9 @@
+History.txt
+Manifest.txt
+lib/monkey_shield.rb
+lib/monkeyshield.rb
+Rakefile
+README.txt
+TODO
+spec/monkey_shield_spec.rb
+spec/real_libs_spec_explicit.rb
