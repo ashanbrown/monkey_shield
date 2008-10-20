@@ -5,8 +5,56 @@ MonkeyShield
 
 Protects you from monkey patching!!
 
-== FEATURES/PROBLEMS:
+== USAGE:
 
+Protect.wrap_with_context :lib1 do
+  class Object
+    def to_xml
+      "<lib1/>"
+    end
+  end
+
+  class Lib1
+    def self.xml_for(o)
+      o.to_xml
+    end
+  end
+end
+
+Protect.wrap_with_context :lib2 do
+  class Object
+    def to_xml
+      "<lib2/>"
+    end
+  end
+
+  class Lib2
+    def self.xml_for(o)
+      o.to_xml
+    end
+  end
+end
+
+# or 
+
+Protect.wrap_with_context(:lib1) { require 'lib1' }
+Protect.wrap_with_context(:lib2) { require 'lib2' }
+
+# now you can...
+
+Protect.context_switch_for Object, :to_xml
+
+o = Object.new
+Lib1.xml_for o  # => "<lib1/>"
+Lib2.xml_for o  # => "<lib2/>"
+
+o.to_xml # => raises Protect::NoContextError
+
+Protect.in_context(:lib2) { o.to_xml } # => "<lib2/>
+
+Protect.set_default_context_for Object, :to_xml, :lib1
+
+o.to_xml => "<lib1/>"
 
 == SYNOPSIS:
 
