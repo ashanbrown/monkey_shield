@@ -5,6 +5,8 @@ MonkeyShield
 
 Protects you from monkey patching!!
 
+I actually successfully wrapped all of Rails in a context.  This shit actually works!.... kindof
+
 == USAGE:
 
 Protect.wrap_with_context :lib1 do
