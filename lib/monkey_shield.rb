@@ -1,3 +1,4 @@
+require 'rubygems'
 require 'inline'
 
 class Module
@@ -46,9 +47,18 @@ class MonkeyShield
   class MethodDefinedInModuleCallsSuper < StandardError; end
 
   class << self
-    def wrap_with_context(context, exceptions = [], &blk) 
+    attr_accessor :debug, :log
+
+    def L
+      puts yield  if log
+    end
+
+    def wrap_with_context(context, exceptions = [], debug = false, &blk) 
+      context = context.to_sym
+      orig_debug, self.debug = self.debug, debug
       Module.class_eval do
         define_method :__MONKEY__method_added do |klass, method_name|
+          MonkeyShield.L { "MA: <#{self}> #{klass}##{method_name}" }
           return  unless MonkeyShield.hook_method_added?
           return  if exceptions.include? method_name or exceptions.include? "#{klass.name}##{method_name}" or
                      exceptions.any? {|ex| ex.is_a? Regexp and ex =~ method_name.to_s }
@@ -66,12 +76,15 @@ class MonkeyShield
       end
 
       MonkeyShield.warnings
+    ensure
+      self.debug = orig_debug
     end
 
     def wrap_method_with_context(klass, method_name, context)
       klass.class_eval do
         visibility = instance_method_visibility method_name 
         return  if ! visibility  # something else removed the method already, wth!
+        MonkeyShield.L { "wrapping #{klass}##{method_name} in #{context}" }
 
         method_name_with_context = MonkeyShield.prefix_with_context(method_name, context)
         unique_method_name = MonkeyShield.unique_method_name(method_name)
@@ -86,14 +99,14 @@ class MonkeyShield
         class_eval <<-EOF, __FILE__, __LINE__
           def #{tmp_name = MonkeyShield.temp_method_name} *args, &blk
             MonkeyShield.in_context #{context.inspect} do
-              __send__(#{unique_method_name.inspect}, *args, &blk)
+              #{unique_method_name}(*args, &blk)
             end
-          rescue NoMethodError
+          #{%{rescue NoMethodError
             if $!.message =~ /super: no superclass method `(.+?)'/
               raise MonkeyShield::MethodDefinedInModuleCallsSuper, "Please add #{self.name}##{method_name} to the exceptions list!"
             end
 
-            raise
+            raise}  if MonkeyShield.debug}
           end
         EOF
         alias_method method_name, tmp_name
@@ -115,8 +128,8 @@ class MonkeyShield
       klass.class_eval do
         class_eval <<-EOF, __FILE__, __LINE__
           def #{tmp_name = MonkeyShield.temp_method_name} *args, &blk
-            raise NoContextError  if ! MonkeyShield.current_context
-            __send__(MonkeyShield.prefix_with_context(#{method_name.inspect}, MonkeyShield.current_context), *args, &blk)
+            raise NoContextError  if ! current_context = MonkeyShield.current_context
+            __send__(MonkeyShield.prefix_with_context(#{method_name.inspect}, current_context), *args, &blk)
           end
         EOF
         alias_method method_name, tmp_name
@@ -125,7 +138,7 @@ class MonkeyShield
     end
 
     def set_default_context_for klass, method_name, context
-      context_switched_name = "__context_switch__#{MonkeyShield.unique}__#{method_name}"
+      context_switched_name = "__context_switch__#{MonkeyShield.unique}__#{sanitize_method(method_name)}"
       klass.class_eval do
         alias_method context_switched_name, method_name
         class_eval <<-EOF, __FILE__, __LINE__
@@ -135,7 +148,7 @@ class MonkeyShield
               MonkeyShield.push_context #{context.inspect}
             end
 
-            __send__(#{context_switched_name.inspect}, *args, &blk)
+            #{context_switched_name}(*args, &blk)
           ensure
             MonkeyShield.pop_context  if need_pop
           end
@@ -166,12 +179,12 @@ class MonkeyShield
           class_eval <<-EOF, __FILE__, __LINE__
             def __MONKEY__method_added__proxy method_name
               __MONKEY__method_added(self, method_name)
-              #{old_method_added && "#{old_method_added} method_name"}
+              #{"#{old_method_added} method_name"  if old_method_added}
             end
 
             def __MONKEY__singleton_method_added__proxy method_name
               __MONKEY__method_added((class<<self;self;end), method_name)
-              #{old_singleton_method_added && "#{old_singleton_method_added} method_name"}
+              #{"#{old_singleton_method_added} method_name"  if old_singleton_method_added}
             end
           EOF
 
@@ -179,7 +192,6 @@ class MonkeyShield
           alias_method :singleton_method_added, :__MONKEY__singleton_method_added__proxy
         end
       end
-
 
       @method_added_hooks_aliased = true
     end
@@ -196,27 +208,98 @@ class MonkeyShield
       Module.class_eval { alias_method :module_function, old_module_function }
     end
 
-    def in_context(context, &blk)
-      push_context context
-      yield
-    ensure
-      pop_context
-    end
-
     def context_stack
       s = Thread.current[:__MONKEY__method_context] and s.dup
     end
 
-    def current_context
-      s = Thread.current[:__MONKEY__method_context] and s.last
-    end
+    inline do |builder| 
+      builder.include '"node.h"'
+      builder.prefix %{
+        extern rb_thread_t rb_curr_thread;
+        static ID __MONKEY__method_context;
 
-    def push_context(context)
-      (Thread.current[:__MONKEY__method_context] ||= []).push context
-    end
+        // def push_context(context)
+        //   (Thread.current[:__MONKEY__method_context] ||= []).push context
+        // end
 
-    def pop_context
-      s = Thread.current[:__MONKEY__method_context] and s.pop
+        VALUE __push_context(VALUE context) {
+          VALUE val = rb_thread_local_aref(rb_curr_thread->thread, __MONKEY__method_context);
+          if (val == Qnil) {
+            val = rb_ary_new();
+            rb_thread_local_aset(rb_curr_thread->thread, __MONKEY__method_context, val);
+          }
+
+          rb_ary_push(val, context);
+
+          return Qnil;
+        }
+
+        // def pop_context
+        //   s = Thread.current[:__MONKEY__method_context] and s.pop
+        // end
+
+        VALUE __pop_context() {
+          VALUE val = rb_thread_local_aref(rb_curr_thread->thread, __MONKEY__method_context);
+          if (val != Qnil)
+            return rb_ary_pop(val);
+
+          return Qnil;
+        }
+      }
+
+      builder.c %{
+        static void initialize_symbol() { __MONKEY__method_context = rb_intern("__MONKEY__method_context"); }
+      }
+
+      builder.c %{
+        // def current_context
+        //  s = Thread.current[:__MONKEY__method_context] and s.last
+        // end
+
+        static VALUE current_context() {
+          VALUE val = rb_thread_local_aref(rb_curr_thread->thread, __MONKEY__method_context);
+          if (val == Qnil)  return Qnil;
+          if (RARRAY(val)->len == 0) return Qnil;
+          return RARRAY(val)->ptr[RARRAY(val)->len-1];
+        }
+      }
+
+      builder.c %{
+        static VALUE push_context(VALUE context) {
+          return __push_context(context);
+        }
+      }  
+
+      builder.c %{
+        static VALUE pop_context() {
+          return __pop_context();
+        }
+      }
+
+#    def in_context(context, &blk)
+#      push_context context
+#      yield
+#    ensure
+#      pop_context
+#    end
+#
+      builder.c %{
+        static VALUE in_context(VALUE context) {
+          __push_context(context);
+          return rb_ensure(rb_yield, NULL, __pop_context, NULL);
+        }
+      }
+
+    # def prefix_with_context(method_name, context)
+    #   "__MONKEY__context__#{context}__#{method_name}" 
+    # end
+      builder.c %{
+        static VALUE prefix_with_context(VALUE method_name, VALUE context) {
+          char tmp[1024];
+          sprintf(tmp, "__MONKEY__context__%s__%s", rb_id2name(rb_to_id(context)), rb_id2name(rb_to_id(method_name)));
+          return rb_str_new2(tmp);
+        }
+      }
     end
 
     def unique
@@ -224,22 +307,24 @@ class MonkeyShield
       $unique_counter += 1
     end
 
-    def prefix_with_context(method_name, context)
-      "__MONKEY__context__#{context}__#{method_name}" 
-    end
-
     def unique_method_name(method_name)
-      "__MONKEY__unique_method__#{unique}__#{method_name}"
+      "__MONKEY__unique_method__#{unique}__#{sanitize_method(method_name)}"
     end
 
     def temp_method_name
       "__MONKEY__temp_method__#{unique}"
     end
 
+    def sanitize_method(method_name)
+      method_name.to_s.gsub(/\W/,'')
+    end
+
     def hook_method_added(hook = true, &blk)
-      orig, @hook_method_added = @hook_method_added, hook
+      L { "#{hook ? 'ENABLE' : 'DISABLE'}ING MA" }
+      orig, @hook_method_added = !!@hook_method_added, hook
       yield
     ensure
+      L { "REVERTING TO #{orig.to_s.upcase}" }
       @hook_method_added = orig
     end
 
@@ -258,3 +343,5 @@ class MonkeyShield
     end
   end
 end
+
+MonkeyShield.initialize_symbol
