@@ -1,5 +1,6 @@
 require 'rubygems'
 require 'spec'
+require 'pp'
 require File.dirname(__FILE__) + '/../lib/monkey_shield'
 
 $GLOBAL_SCOPE_BINDING = binding
@@ -16,6 +17,24 @@ describe MonkeyShield do
 
   after do
     (get_klasses - @current_klasses).each {|k| Object.send :remove_const, k.name }
+  end
+
+  it "should not wrap the method multiple times (due to recursive method_added calls)" do
+    unique = "asdfjhasdfuhuambambaenbweykgaerkyaskyfkagdfvaxmvmdfasdmf"
+    backtrace = nil
+    MonkeyShield.wrap_with_context :test do
+      class X;end
+      X.class_eval do
+        define_method(unique) do
+          :blah!
+          raise '' rescue backtrace = $@
+        end
+      end
+    end
+
+    X.new.send(unique)
+
+    backtrace.grep(/#{unique}/).grep(/__MONKEY__/).size.should == 1
   end
 
   it "aliasing a method then redefining it with the same name should not create an infinite loop" do 

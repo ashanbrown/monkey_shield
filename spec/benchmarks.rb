@@ -1,12 +1,10 @@
 require 'benchmark'
 require File.dirname(__FILE__) + "/../lib/monkey_shield"
 
-MonkeyShield.log = true
 MonkeyShield.wrap_with_context :dog do
   class Animal
     def speak
       :bark!
-      raise'wf'
     end
 
     def blah
@@ -47,18 +45,18 @@ def do_something_else
   Animal.new.something_else
 end
 
-
-def x
-  :x
-end
-
-
 t1 = Benchmark.realtime { 100000.times { speak_dog! } }
 t2 = Benchmark.realtime { 100000.times { do_blah! } }
 tp = Benchmark.realtime { 100000.times { do_something_else } }
 
+class Symbol
+  def to_proc
+    lambda { |i| i.__send__ self }
+  end
+end
+
+require 'ruby-prof'
 prof = lambda do 
-  require 'ruby-prof'
   result = RubyProf.profile do 
     100000.times { speak_dog! }
   end

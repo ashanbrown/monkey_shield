@@ -47,6 +47,7 @@ class MonkeyShield
   class MethodDefinedInModuleCallsSuper < StandardError; end
 
   class << self
+    attr_accessor :prevent_recursing_method_added, :prevent_recursing_singleton_method_added
     attr_accessor :debug, :log
 
     def L
@@ -178,13 +179,21 @@ class MonkeyShield
 
           class_eval <<-EOF, __FILE__, __LINE__
             def __MONKEY__method_added__proxy method_name
-              __MONKEY__method_added(self, method_name)
+              n = MonkeyShield.prevent_recursing_method_added += 1
+
+              __MONKEY__method_added(self, method_name)  if n == 1
               #{"#{old_method_added} method_name"  if old_method_added}
+            ensure
+              MonkeyShield.prevent_recursing_method_added -= 1
             end
 
             def __MONKEY__singleton_method_added__proxy method_name
-              __MONKEY__method_added((class<<self;self;end), method_name)
+              n = MonkeyShield.prevent_recursing_singleton_method_added += 1
+
+              __MONKEY__method_added((class<<self;self;end), method_name)  if n == 1
               #{"#{old_singleton_method_added} method_name"  if old_singleton_method_added}
+            ensure
+              MonkeyShield.prevent_recursing_singleton_method_added -= 1
             end
           EOF
 
@@ -320,11 +329,9 @@ class MonkeyShield
     end
 
     def hook_method_added(hook = true, &blk)
-      L { "#{hook ? 'ENABLE' : 'DISABLE'}ING MA" }
       orig, @hook_method_added = !!@hook_method_added, hook
       yield
     ensure
-      L { "REVERTING TO #{orig.to_s.upcase}" }
       @hook_method_added = orig
     end
 
@@ -345,3 +352,4 @@ class MonkeyShield
 end
 
 MonkeyShield.initialize_symbol
+MonkeyShield.prevent_recursing_method_added = MonkeyShield.prevent_recursing_singleton_method_added = 0
