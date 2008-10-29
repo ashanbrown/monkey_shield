@@ -60,5 +60,5 @@ Usage
 Install
 =
 
-gem sources -a http://gems.github.com
-sudo gem install coderrr-monkey_shield
+    gem sources -a http://gems.github.com
+    sudo gem install coderrr-monkey_shield
