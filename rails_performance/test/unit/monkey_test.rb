@@ -14,7 +14,7 @@ exceptions = [
   :inherited
 ]
 
-MonkeyShield.wrap_with_context :rails, exceptions, true do
+MonkeyShield.wrap_with_context :rails, exceptions do
   require File.dirname(__FILE__)+"/../test_helper"
 
   Monkey.delete_all
