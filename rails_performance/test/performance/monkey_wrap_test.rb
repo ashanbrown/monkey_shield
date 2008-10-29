@@ -21,7 +21,6 @@ MonkeyShield.wrap_with_context :test, exceptions do
 end
 
 class MonkeyWrapTest < ActionController::PerformanceTest
-  # Replace this with your real tests.
   def test_homepage
     10.times { get '/perf/do_work' }
   end
