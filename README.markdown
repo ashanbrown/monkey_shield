@@ -3,6 +3,8 @@ Description
 
 Protects you from monkey patching!!
 
+MonkeyShield gets around the issue of method name collision from different libraries.  For example if two libraries define .months on Fixnum and then each library depends on its specific implementation things will break.  With MonkeyShield it's simple to get around this problem.  You just wrap the require statement for each library with a context.  Then you specify which methods need to be context switched and MonkeyShield does the rest!
+
 I actually successfully wrapped all of Rails in a context.  This shit actually works!.... kindof
 
 Usage
