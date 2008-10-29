@@ -62,3 +62,12 @@ Install
 
     gem sources -a http://gems.github.com
     sudo gem install coderrr-monkey_shield
+
+Todo
+=
+
+Instead of explicity wrapping code in a block, we should allow something like
+
+    MonkeyShield.wrap_libraries_in_context('activesupport')
+
+which would hook require and when that library is required it will wrap the require in a context with the same name.  This would allow you to wrap requires inside of big librarys w/o access to the source code.
