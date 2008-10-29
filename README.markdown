@@ -8,7 +8,7 @@ I actually successfully wrapped all of Rails in a context.  This shit actually w
 Usage
 =
 
-    Protect.wrap_with_context :lib1 do
+    MonkeyShield.wrap_with_context :lib1 do
       class Object
         def to_xml
           "<lib1/>"
@@ -22,7 +22,7 @@ Usage
       end
     end
     
-    Protect.wrap_with_context :lib2 do
+    MonkeyShield.wrap_with_context :lib2 do
       class Object
         def to_xml
           "<lib2/>"
@@ -38,12 +38,12 @@ Usage
     
     # or 
     
-    Protect.wrap_with_context(:lib1) { require 'lib1' }
-    Protect.wrap_with_context(:lib2) { require 'lib2' }
+    MonkeyShield.wrap_with_context(:lib1) { require 'lib1' }
+    MonkeyShield.wrap_with_context(:lib2) { require 'lib2' }
     
     # now you can...
     
-    Protect.context_switch_for Object, :to_xml
+    MonkeyShield.context_switch_for Object, :to_xml
     
     o = Object.new
     Lib1.xml_for o  # => "<lib1/>"
@@ -51,9 +51,9 @@ Usage
     
     o.to_xml # => raises Protect::NoContextError
     
-    Protect.in_context(:lib2) { o.to_xml } # => "<lib2/>
+    MonkeyShield.in_context(:lib2) { o.to_xml } # => "<lib2/>
     
-    Protect.set_default_context_for Object, :to_xml, :lib1
+    MonkeyShield.set_default_context_for Object, :to_xml, :lib1
     
     o.to_xml => "<lib1/>"
     
