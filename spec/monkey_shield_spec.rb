@@ -52,6 +52,16 @@ describe MonkeyShield do
     test2.should == :x2
   end
 
+  it "context switching more than two colliding methods should work" do
+    MonkeyShield.wrap_with_context(:a) {class X;def x;:a;end;end; module Kernel;def a;X.new.x;end;end }
+    MonkeyShield.wrap_with_context(:b) {class X;def x;:b;end;end; module Kernel;def b;X.new.x;end;end }
+    MonkeyShield.wrap_with_context(:c) {class X;def x;:c;end;end; module Kernel;def c;X.new.x;end;end }
+
+    a.should == :a
+    b.should == :b
+    c.should == :c
+  end
+
   it "should not wrap the method multiple times (due to recursive method_added calls)" do
     unique = "asdfjhasdfuhuambambaenbweykgaerkyaskyfkagdfvaxmvmdfasdmf"
     backtrace = nil
