@@ -94,8 +94,10 @@ class MonkeyShield
         alias_method unique_method_name, method_name
         private method_name_with_context, unique_method_name
 
-        UNIQUE_METHOD_NAMES[ [self, method_name] ] = unique_method_name
-        CONTEXT_WRAPPED_METHODS[ [self, method_name] ] << context
+        already_defined = CONTEXT_WRAPPED_METHODS.has_key?([klass, method_name])
+
+        UNIQUE_METHOD_NAMES[ [klass, method_name] ] = unique_method_name
+        CONTEXT_WRAPPED_METHODS[ [klass, method_name] ] << context
 
         class_eval <<-EOF, __FILE__, __LINE__
           def #{tmp_name = MonkeyShield.temp_method_name} *args, &blk
@@ -114,6 +116,8 @@ class MonkeyShield
         remove_method tmp_name
 
         send visibility, method_name
+
+        MonkeyShield.context_switch_for klass, method_name  if already_defined
       end
     rescue
       puts "failed to wrap #{klass.name}##{method_name}: #{$!}"

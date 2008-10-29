@@ -19,6 +19,39 @@ describe MonkeyShield do
     (get_klasses - @current_klasses).each {|k| Object.send :remove_const, k.name }
   end
 
+  it "should automatically detect which methods to context switch" do
+    MonkeyShield.wrap_with_context :test1 do
+      class X
+        def x
+          :x1
+        end
+      end
+
+      module Kernel
+        def test1
+          X.new.x
+        end
+      end
+    end
+
+    MonkeyShield.wrap_with_context :test2 do
+      class X
+        def x
+          :x2
+        end
+      end
+
+      module Kernel
+        def test2
+          X.new.x
+        end
+      end
+    end
+
+    test1.should == :x1
+    test2.should == :x2
+  end
+
   it "should not wrap the method multiple times (due to recursive method_added calls)" do
     unique = "asdfjhasdfuhuambambaenbweykgaerkyaskyfkagdfvaxmvmdfasdmf"
     backtrace = nil

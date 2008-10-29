@@ -8,13 +8,11 @@ Gem::Specification.new do |s|
   s.has_rdoc = true
   s.authors  = ["coderrr"]
   s.files    = [
-    "History.txt", 
-    "Manifest.txt", 
-    "README.txt", 
+    "README.markdown", 
     "Rakefile", 
     "monkey_shield.gemspec", 
-    "lib/monkey_shield.rb", 
-    "lib/monkeyshield.rb"]
+    "lib/monkey_shield.rb"
+  ]
   s.test_files = ["spec/monkey_shield_spec.rb",
       "spec/real_libs_spec_explicit.rb"]
   s.rdoc_options = ["--main", "README.txt"]
