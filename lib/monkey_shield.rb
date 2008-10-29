@@ -54,7 +54,8 @@ class MonkeyShield
       puts yield  if log
     end
 
-    def wrap_with_context(context, exceptions = [], debug = false, &blk) 
+    def wrap_with_context(context, exceptions = [], debug = false, &blk)
+      exceptions << :method_added
       context = context.to_sym
       orig_debug, self.debug = self.debug, debug
       Module.class_eval do
@@ -77,6 +78,10 @@ class MonkeyShield
       end
 
       MonkeyShield.warnings
+
+      CONTEXT_WRAPPED_METHODS.select{|k,ctxs| ctxs.uniq.size > 1}.each do |(klass,method),c|
+        MonkeyShield.context_switch_for klass, method 
+      end
     ensure
       self.debug = orig_debug
     end
@@ -93,8 +98,6 @@ class MonkeyShield
         alias_method method_name_with_context, method_name
         alias_method unique_method_name, method_name
         private method_name_with_context, unique_method_name
-
-        already_defined = CONTEXT_WRAPPED_METHODS.has_key?([klass, method_name])
 
         UNIQUE_METHOD_NAMES[ [klass, method_name] ] = unique_method_name
         CONTEXT_WRAPPED_METHODS[ [klass, method_name] ] << context
@@ -116,14 +119,12 @@ class MonkeyShield
         remove_method tmp_name
 
         send visibility, method_name
-
-        MonkeyShield.context_switch_for klass, method_name  if already_defined
       end
     rescue
       puts "failed to wrap #{klass.name}##{method_name}: #{$!}"
       puts $!.backtrace.join("\n")
     end
-
+          
     def reset!
       CONTEXT_WRAPPED_METHODS.clear
       UNIQUE_METHOD_NAMES.clear

@@ -12,8 +12,8 @@ exceptions = [
   :inherited
 ]
 
-MonkeyShield.wrap_with_context :test, exceptions do
-#begin
+#MonkeyShield.wrap_with_context :test, exceptions do
+begin
 
   require File.dirname(__FILE__)+'/../test_helper'
   require 'performance_test_help'

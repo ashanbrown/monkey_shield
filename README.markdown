@@ -45,8 +45,6 @@ Usage
     
     # now you can...
     
-    MonkeyShield.context_switch_for Object, :to_xml
-    
     o = Object.new
     Lib1.xml_for o  # => "<lib1/>"
     Lib2.xml_for o  # => "<lib2/>"
@@ -64,8 +62,3 @@ Install
 
     gem sources -a http://gems.github.com
     sudo gem install coderrr-monkey_shield
-
-TODO
-=
-
-Automatically determine which methods should be context switched and do this automatically.
