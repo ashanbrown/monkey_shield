@@ -3,7 +3,8 @@ require 'spec'
 require File.dirname(__FILE__) + '/../lib/monkey_shield'
 
 describe "MonkeyShield with some real libs" do
-  MonkeyShield.wrap_with_context :rails, ['ActiveSupport::CoreExtensions::LoadErrorExtensions::LoadErrorClassMethods#new', 'ActiveSupport::Dependencies#new_constants_in', 'ActiveSupport::Dependencies::Loadable#require'] do
+#  MonkeyShield.wrap_with_context :rails, ['ActiveSupport::CoreExtensions::LoadErrorExtensions::LoadErrorClassMethods#new', 'ActiveSupport::Dependencies#new_constants_in', 'ActiveSupport::Dependencies::Loadable#require'] do
+  MonkeyShield.wrap_with_context :rails, [] do
     require 'activesupport'  # defines String#each_char
     require 'activerecord'   # load just to see if we get any errors
 

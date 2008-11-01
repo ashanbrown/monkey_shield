@@ -1,6 +1,7 @@
 require 'rubygems'
 require 'inline'
 
+
 class Module
   # the singleton method which module_function creates should point to the original 
   # method, not the context wrapped one
@@ -38,6 +39,14 @@ class Module
 end
 
 class MonkeyShield
+  begin
+    require 'ruby2ruby'
+    @r2r = true
+  rescue LoadError
+    @r2r = false
+    puts "no ruby2ruby found, you must manually specify which methods to ignore!"
+  end
+
   VERSION = "0.1.0"
 
   UNIQUE_METHOD_NAMES = {}
@@ -64,6 +73,7 @@ class MonkeyShield
           return  unless MonkeyShield.hook_method_added?
           return  if exceptions.include? method_name or exceptions.include? "#{klass.name}##{method_name}" or
                      exceptions.any? {|ex| ex.is_a? Regexp and ex =~ method_name.to_s }
+          return  if MonkeyShield.module_calls_super?(klass, method_name)
 
           MonkeyShield.ignore_method_added { MonkeyShield.wrap_method_with_context(klass, method_name, context) }
         end
@@ -79,7 +89,7 @@ class MonkeyShield
 
       MonkeyShield.warnings
 
-      CONTEXT_WRAPPED_METHODS.select{|k,ctxs| ctxs.uniq.size > 1}.each do |(klass,method),c|
+      CONTEXT_WRAPPED_METHODS.select{|k,ctxs| ctxs.uniq.size > 1 }.each do |(klass,method),c|
         MonkeyShield.context_switch_for klass, method 
       end
     ensure
@@ -346,6 +356,19 @@ class MonkeyShield
 
     def hook_method_added?
       @hook_method_added
+    end
+
+    def r2r?
+      !! @r2r
+    end
+
+    def module_calls_super?(klass, method_name)
+      # TODO: this will even catch super inside of strings :/
+      r2r? and klass.class == Module and (klass.instance_method(method_name).to_ruby =~ /\bsuper\b/ rescue false)
+    end
+
+    def context_wrapped?(klass, method_name)
+      !! CONTEXT_WRAPPED_METHODS.has_key?([klass, method_name])
     end
 
     def warnings

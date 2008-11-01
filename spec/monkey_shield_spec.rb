@@ -48,11 +48,13 @@ describe MonkeyShield do
       end
     end
 
+    proc { X.new.x }.should raise_error(MonkeyShield::NoContextError)
+
     test1.should == :x1
     test2.should == :x2
   end
 
-  it "context switching more than two colliding methods should work" do
+  it "auto context switching more than two colliding methods should work" do
     MonkeyShield.wrap_with_context(:a) {class X;def x;:a;end;end; module Kernel;def a;X.new.x;end;end }
     MonkeyShield.wrap_with_context(:b) {class X;def x;:b;end;end; module Kernel;def b;X.new.x;end;end }
     MonkeyShield.wrap_with_context(:c) {class X;def x;:c;end;end; module Kernel;def c;X.new.x;end;end }
@@ -60,6 +62,35 @@ describe MonkeyShield do
     a.should == :a
     b.should == :b
     c.should == :c
+  end
+
+  it "should not wrap Module methods which call super" do
+    if ! MonkeyShield.r2r?
+      puts "ruby2ruby is necessary to run this test"
+    else
+      MonkeyShield.wrap_with_context :test do
+        module X
+          def no_supa
+            no_super
+          end
+
+          def yes_supa
+            do_something
+            super
+          end
+
+          def fakeout_supa
+            do_something
+            "i dont call super "
+            do_somehting
+          end
+        end
+      end
+
+      MonkeyShield.context_wrapped?(X, :no_supa).should be_true
+      MonkeyShield.context_wrapped?(X, :yes_supa).should be_false
+      MonkeyShield.context_wrapped?(X, :fakeout_supa).should be_true
+    end
   end
 
   it "should not wrap the method multiple times (due to recursive method_added calls)" do
@@ -190,6 +221,7 @@ describe MonkeyShield do
   end
 
   it "module method calling super error should only be caught if debug is set" do
+    MonkeyShield.should_receive(:r2r?).exactly(4).times.and_return(false)
     MonkeyShield.wrap_with_context :test do
       class A 
         def a

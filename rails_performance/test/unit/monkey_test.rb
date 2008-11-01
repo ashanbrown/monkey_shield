@@ -1,20 +1,6 @@
 require File.dirname(__FILE__)+"/../../../lib/monkey_shield"
 
-exceptions = [
-  'ActiveSupport::CoreExtensions::LoadErrorExtensions::LoadErrorClassMethods#new',
-  'ActiveSupport::Dependencies#new_constants_in',
-  'ActiveSupport::Dependencies::Loadable#require',
-  'MonitorMixin#initialize',
-  'ActionController::Benchmarking::ClassMethods#benchmark',
-  'ActionView::RenderablePartial#render',
-  'ActiveRecord::AttributeMethods#respond_to?',
-  'ActiveSupport::Dependencies::ClassConstMissing#const_missing',
-  'ActiveRecord::AttributeMethods#method_missing',
-#  :method_missing,
-  :inherited
-]
-
-MonkeyShield.wrap_with_context :rails, exceptions do
+MonkeyShield.wrap_with_context :rails do
   require File.dirname(__FILE__)+"/../test_helper"
 
   Monkey.delete_all
