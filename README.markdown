@@ -66,8 +66,12 @@ Install
 Todo
 =
 
-Instead of explicity wrapping code in a block, we should allow something like
+Use ruby2ruby to determine which methods should NOT be wrapped based on their contents.  Right now there is only one edge case that requires this.  The use of super in a module method because of this [bug][1]
+
+Instead of explicitly wrapping code in a block, we should allow something like
 
     MonkeyShield.wrap_libraries_in_context('activesupport')
 
-which would hook require and when that library is required it will wrap the require in a context with the same name.  This would allow you to wrap requires inside of big librarys w/o access to the source code.
+which would hook require and when that library is required it will wrap the require in a context with the same name.  This would allow you to wrap requires inside of big libraries w/o access to the source code.
+
+  [1]: http://coderrr.wordpress.com/2008/03/28/alias_methodmodule-bug-in-ruby-18/
