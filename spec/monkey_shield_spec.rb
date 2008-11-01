@@ -64,6 +64,7 @@ describe MonkeyShield do
     c.should == :c
   end
 
+  # SEE: http://coderrr.wordpress.com/2008/03/28/alias_methodmodule-bug-in-ruby-18/
   it "should not wrap Module methods which call super" do
     if ! MonkeyShield.r2r?
       puts "ruby2ruby is necessary to run this test"
