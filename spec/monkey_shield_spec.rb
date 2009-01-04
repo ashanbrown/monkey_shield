@@ -217,48 +217,6 @@ describe MonkeyShield do
     Lib2.new.x(o).should == "lib2 xml"
   end
 
-  it "module method calling super error should only be caught if debug is set" do
-    MonkeyShield.wrap_with_context :test do
-      class A 
-        def a
-          "a"
-        end
-      end
-
-      module M
-        def a
-          super
-        end
-      end
-
-      class B < A
-        include M
-      end
-    end
-
-    lambda { B.new.a }.should raise_error(NoMethodError)
-
-    MonkeyShield.wrap_with_context :test, [], true do
-      class AA
-        def aa
-          "aa"
-        end
-      end
-
-      module MM
-        def aa
-          super
-        end
-      end
-
-      class BB < AA
-        include MM
-      end
-    end
-
-    lambda { BB.new.aa }.should raise_error(MonkeyShield::MethodDefinedInModuleCallsSuper)
-  end
-
   it "ignored method should not be wrapped in context" do
     MonkeyShield.should_not_receive :wrap_method_with_context
     MonkeyShield.wrap_with_context(:test, ['A#ggg']) do
