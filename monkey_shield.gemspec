@@ -15,7 +15,5 @@ Gem::Specification.new do |s|
   ]
   s.test_files = ["spec/monkey_shield_spec.rb",
       "spec/real_libs_spec_explicit.rb"]
-  s.rdoc_options = ["--main", "README.txt"]
-  s.extra_rdoc_files = ["History.txt", "Manifest.txt", "README.txt"]
   s.add_dependency("RubyInline", [">= 3.6.7"])
 end
