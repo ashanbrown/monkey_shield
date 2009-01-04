@@ -366,6 +366,8 @@ class MonkeyShield
     def module_calls_super?(klass, method_name)
       klass.class == Module and 
         ! (klass.instance_method(method_name).to_sexp.flatten & [:super, :zsuper]).empty?
+    rescue UnsupportedNodeError
+      false
     end
 
     def context_wrapped?(klass, method_name)
