@@ -1,6 +1,19 @@
 require 'rubygems'
+gem 'ParseTree', '>=3.0.2'
+gem 'RubyInline', '>=3.8.1'
 require 'inline'
+require 'parse_tree'
+require 'parse_tree_extensions'
 
+class TmpClass; end
+
+class UnboundMethod
+  def to_sexp
+    um = self
+    TmpClass.send(:define_method, :__tmp__, um)
+    TmpClass.new.method(:__tmp__).to_sexp
+  end
+end
 
 class Module
   # the singleton method which module_function creates should point to the original 
@@ -39,14 +52,6 @@ class Module
 end
 
 class MonkeyShield
-  begin
-    require 'ruby2ruby'
-    @r2r = true
-  rescue LoadError
-    @r2r = false
-    puts "no ruby2ruby found, you must manually specify which methods to ignore!"
-  end
-
   VERSION = "0.1.0"
 
   UNIQUE_METHOD_NAMES = {}
@@ -358,13 +363,9 @@ class MonkeyShield
       @hook_method_added
     end
 
-    def r2r?
-      !! @r2r
-    end
-
     def module_calls_super?(klass, method_name)
-      # TODO: this will even catch super inside of strings :/
-      r2r? and klass.class == Module and (klass.instance_method(method_name).to_ruby =~ /\bsuper\b/ rescue false)
+      klass.class == Module and 
+        ! (klass.instance_method(method_name).to_sexp.flatten & [:super, :zsuper]).empty?
     end
 
     def context_wrapped?(klass, method_name)

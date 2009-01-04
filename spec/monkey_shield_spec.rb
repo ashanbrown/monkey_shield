@@ -66,33 +66,28 @@ describe MonkeyShield do
 
   # SEE: http://coderrr.wordpress.com/2008/03/28/alias_methodmodule-bug-in-ruby-18/
   it "should not wrap Module methods which call super" do
-    if ! MonkeyShield.r2r?
-      puts "ruby2ruby is necessary to run this test"
-    else
-      MonkeyShield.wrap_with_context :test do
-        module X
-          def no_supa
-            no_super
-          end
+    MonkeyShield.wrap_with_context :test do
+      module X
+        def no_supa
+          no_super
+        end
 
-          def yes_supa
-            do_something
-            super
-          end
+        def yes_supa
+          do_something
+          super
+        end
 
-          def fakeout_supa
-            do_something
-            "i dont call super "
-            do_somehting
-          end
+        def fakeout_supa
+          do_something
+          "i dont call super "
+          do_somehting
         end
       end
-
-      MonkeyShield.context_wrapped?(X, :no_supa).should be_true
-      MonkeyShield.context_wrapped?(X, :yes_supa).should be_false
-      # yes i know this is a false positive, but we'll have to live with it
-      MonkeyShield.context_wrapped?(X, :fakeout_supa).should be_false
     end
+
+    MonkeyShield.context_wrapped?(X, :no_supa).should be_true
+    MonkeyShield.context_wrapped?(X, :yes_supa).should be_false
+    MonkeyShield.context_wrapped?(X, :fakeout_supa).should be_true
   end
 
   it "should not wrap the method multiple times (due to recursive method_added calls)" do
@@ -223,7 +218,6 @@ describe MonkeyShield do
   end
 
   it "module method calling super error should only be caught if debug is set" do
-    MonkeyShield.should_receive(:r2r?).exactly(4).times.and_return(false)
     MonkeyShield.wrap_with_context :test do
       class A 
         def a
