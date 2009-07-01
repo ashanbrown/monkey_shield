@@ -30,7 +30,8 @@ class Module
   end  
 
   alias_method :__module_function__, :module_function  # store original module_function
-  # this has to be a C function so that it can modify the module's scope
+  # this has to be chained as a C function so that it can modify the module's scope,
+  # a method def'd in ruby loses the ability to modify the callers scope
   inline { |builder| builder.c_raw %q{
     static VALUE __MONKEY__module_function(int argc, VALUE *argv, VALUE self) {
       if (argc == 0)
@@ -241,94 +242,27 @@ class MonkeyShield
       s = Thread.current[:__MONKEY__method_context] and s.dup
     end
 
-    inline do |builder| 
-      builder.include '"node.h"'
-      builder.prefix %{
-        extern rb_thread_t rb_curr_thread;
-        static ID __MONKEY__method_context;
+    def push_context(context)
+      (Thread.current[:__MONKEY__method_context] ||= []).push context
+    end
 
-        // def push_context(context)
-        //   (Thread.current[:__MONKEY__method_context] ||= []).push context
-        // end
+    def pop_context
+      s = Thread.current[:__MONKEY__method_context] and s.pop
+    end
 
-        VALUE __push_context(VALUE context) {
-          VALUE val = rb_thread_local_aref(rb_curr_thread->thread, __MONKEY__method_context);
-          if (val == Qnil) {
-            val = rb_ary_new();
-            rb_thread_local_aset(rb_curr_thread->thread, __MONKEY__method_context, val);
-          }
+    def current_context
+      s = Thread.current[:__MONKEY__method_context] and s.last
+    end
 
-          rb_ary_push(val, context);
+    def in_context(context, &blk)
+      push_context context
+      yield
+    ensure
+      pop_context
+    end
 
-          return Qnil;
-        }
-
-        // def pop_context
-        //   s = Thread.current[:__MONKEY__method_context] and s.pop
-        // end
-
-        VALUE __pop_context() {
-          VALUE val = rb_thread_local_aref(rb_curr_thread->thread, __MONKEY__method_context);
-          if (val != Qnil)
-            return rb_ary_pop(val);
-
-          return Qnil;
-        }
-      }
-
-      builder.c %{
-        static void initialize_symbol() { __MONKEY__method_context = rb_intern("__MONKEY__method_context"); }
-      }
-
-      builder.c %{
-        // def current_context
-        //  s = Thread.current[:__MONKEY__method_context] and s.last
-        // end
-
-        static VALUE current_context() {
-          VALUE val = rb_thread_local_aref(rb_curr_thread->thread, __MONKEY__method_context);
-          if (val == Qnil)  return Qnil;
-          if (RARRAY(val)->len == 0) return Qnil;
-          return RARRAY(val)->ptr[RARRAY(val)->len-1];
-        }
-      }
-
-      builder.c %{
-        static VALUE push_context(VALUE context) {
-          return __push_context(context);
-        }
-      }  
-
-      builder.c %{
-        static VALUE pop_context() {
-          return __pop_context();
-        }
-      }
-
-#    def in_context(context, &blk)
-#      push_context context
-#      yield
-#    ensure
-#      pop_context
-#    end
-#
-      builder.c %{
-        static VALUE in_context(VALUE context) {
-          __push_context(context);
-          return rb_ensure(rb_yield, NULL, __pop_context, NULL);
-        }
-      }
-
-    # def prefix_with_context(method_name, context)
-    #   "__MONKEY__context__#{context}__#{method_name}" 
-    # end
-      builder.c %{
-        static VALUE prefix_with_context(VALUE method_name, VALUE context) {
-          char tmp[1024];
-          sprintf(tmp, "__MONKEY__context__%s__%s", rb_id2name(rb_to_id(context)), rb_id2name(rb_to_id(method_name)));
-          return rb_str_new2(tmp);
-        }
-      }
+    def prefix_with_context(method_name, context)
+      "__MONKEY__context__#{context}__#{method_name}" 
     end
 
     def unique
@@ -382,5 +316,4 @@ class MonkeyShield
   end
 end
 
-MonkeyShield.initialize_symbol
 MonkeyShield.prevent_recursing_method_added = MonkeyShield.prevent_recursing_singleton_method_added = 0
