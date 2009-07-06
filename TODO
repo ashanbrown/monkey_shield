@@ -1,8 +1,8 @@
-- instead of replacing module_funcion after using it, we should just have a contatn flag set to turn it on and off
-- Thread.new should copy context stack from the thread which spawned it
+- note you need to context switch yourself if the clashes come throuhg includes and not direect method overwrites
 
-- fix problem methods
-  - methods deifned in a module which call super... unfixable??
+- assume whole file is single context, simplifies everything
+  - change tests to use eval with fake filename
+
 - think of way to automatically detect what needs to be context switched on
   - needs to take into account all the ancestors and lookup rules... not worth it??
     - example: each_char in some included Iterator classes + each_char in String class directly

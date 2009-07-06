@@ -1,46 +1,4 @@
-require 'rubygems'
-gem 'ParseTree', '>=3.0.2'
-gem 'RubyInline', '>=3.8.1'
-require 'inline'
-require 'parse_tree'
-require 'parse_tree_extensions'
-
-class TmpClass; end
-
-class UnboundMethod
-  def to_sexp
-    um = self
-    TmpClass.send(:define_method, :__tmp__, um)
-    TmpClass.new.method(:__tmp__).to_sexp
-  end
-end
-
 class Module
-  # the singleton method which module_function creates should point to the original 
-  # method, not the context wrapped one
-  def __MONKEY__module_function__with_args(*methods)
-    methods.each do |method|
-      if unique_method_name = MonkeyShield::UNIQUE_METHOD_NAMES[ [self, method] ]
-        __module_function__(unique_method_name)
-        (class << self; self; end).class_eval { alias_method method, unique_method_name }
-      else
-        __module_function__(method)
-      end
-    end
-  end  
-
-  alias_method :__module_function__, :module_function  # store original module_function
-  # this has to be chained as a C function so that it can modify the module's scope,
-  # a method def'd in ruby loses the ability to modify the callers scope
-  inline { |builder| builder.c_raw %q{
-    static VALUE __MONKEY__module_function(int argc, VALUE *argv, VALUE self) {
-      if (argc == 0)
-        return rb_funcall(self, rb_intern("__module_function__"), 0);
-      else
-        return rb_funcall2(self, rb_intern("__MONKEY__module_function__with_args"), argc, argv);
-    }
-  } }
-
   def instance_method_visibility(method_name)
     if public_method_defined? method_name
       :public
@@ -53,15 +11,17 @@ class Module
 end
 
 class MonkeyShield
-  VERSION = "0.1.0"
-
-  UNIQUE_METHOD_NAMES = {}
-  CONTEXT_WRAPPED_METHODS = Hash.new{|h,k| h[k] = [] }
+  VERSION = "0.2.0"
 
   class NoContextError < StandardError; end
   class MethodDefinedInModuleCallsSuper < StandardError; end
 
+  @context_locations = {}
+  @default_contexts = {}
+  @context_wrapped_methods = Hash.new{|h,k| h[k] = [] }
+
   class << self
+    attr_accessor :context_locations, :default_contexts, :current_default_context, :context_wrapped_methods
     attr_accessor :prevent_recursing_method_added, :prevent_recursing_singleton_method_added
     attr_accessor :debug, :log
 
@@ -76,10 +36,16 @@ class MonkeyShield
       Module.class_eval do
         define_method :__MONKEY__method_added do |klass, method_name|
           MonkeyShield.L { "MA: <#{self}> #{klass}##{method_name}" }
+
+          caller[1] =~ /^(.+):(\d+)(:in `.+$|$)/
+          file, line = File.expand_path($1), $2
+          MonkeyShield.L { "#{method_name} defined on line #{line} of #{file}" }
+
+          MonkeyShield.context_locations[file] = context
+
           return  unless MonkeyShield.hook_method_added?
           return  if exceptions.include? method_name or exceptions.include? "#{klass.name}##{method_name}" or
                      exceptions.any? {|ex| ex.is_a? Regexp and ex =~ method_name.to_s }
-          return  if MonkeyShield.module_calls_super?(klass, method_name)
 
           MonkeyShield.ignore_method_added { MonkeyShield.wrap_method_with_context(klass, method_name, context) }
         end
@@ -87,15 +53,13 @@ class MonkeyShield
 
       MonkeyShield.alias_method_added_hooks
 
-      MonkeyShield.hook_module_function do
-        MonkeyShield.hook_method_added do
-          yield
-        end
+      MonkeyShield.hook_method_added do
+        yield
       end
 
       MonkeyShield.warnings
 
-      CONTEXT_WRAPPED_METHODS.select{|k,ctxs| ctxs.uniq.size > 1 }.each do |(klass,method),c|
+      @context_wrapped_methods.select{|k,ctxs| ctxs.uniq.size > 1 }.each do |(klass,method),c|
         MonkeyShield.context_switch_for klass, method 
       end
     ensure
@@ -115,26 +79,7 @@ class MonkeyShield
         alias_method unique_method_name, method_name
         private method_name_with_context, unique_method_name
 
-        UNIQUE_METHOD_NAMES[ [klass, method_name] ] = unique_method_name
-        CONTEXT_WRAPPED_METHODS[ [klass, method_name] ] << context
-
-        class_eval <<-EOF, __FILE__, __LINE__
-          def #{tmp_name = MonkeyShield.temp_method_name} *args, &blk
-            MonkeyShield.in_context #{context.inspect} do
-              #{unique_method_name}(*args, &blk)
-            end
-          #{%{rescue NoMethodError
-            if $!.message =~ /super: no superclass method `(.+?)'/
-              raise MonkeyShield::MethodDefinedInModuleCallsSuper, "Please add #{self.name}##{method_name} to the exceptions list!"
-            end
-
-            raise}  if MonkeyShield.debug}
-          end
-        EOF
-        alias_method method_name, tmp_name
-        remove_method tmp_name
-
-        send visibility, method_name
+        MonkeyShield.context_wrapped_methods[ [klass, method_name] ] << context
       end
     rescue
       puts "failed to wrap #{klass.name}##{method_name}: #{$!}"
@@ -142,15 +87,22 @@ class MonkeyShield
     end
           
     def reset!
-      CONTEXT_WRAPPED_METHODS.clear
-      UNIQUE_METHOD_NAMES.clear
+      @context_wrapped_methods.clear
+      @context_locations.clear
     end
 
     def context_switch_for klass, method_name
       klass.class_eval do
-        class_eval <<-EOF, __FILE__, __LINE__
+        visibility = instance_method_visibility method_name 
+        class_eval <<-EOF, __FILE__, __LINE__+1
+          #{visibility}
+
           def #{tmp_name = MonkeyShield.temp_method_name} *args, &blk
-            raise NoContextError  if ! current_context = MonkeyShield.current_context
+            current_context = MonkeyShield.current_context(1)
+            current_context ||= MonkeyShield.default_contexts[ [self.class, #{method_name.inspect}] ]
+            current_context ||= MonkeyShield.current_default_context
+            raise NoContextError  if ! current_context
+
             __send__(MonkeyShield.prefix_with_context(#{method_name.inspect}, current_context), *args, &blk)
           end
         EOF
@@ -159,25 +111,12 @@ class MonkeyShield
       end
     end
 
-    def set_default_context_for klass, method_name, context
-      context_switched_name = "__context_switch__#{MonkeyShield.unique}__#{sanitize_method(method_name)}"
-      klass.class_eval do
-        alias_method context_switched_name, method_name
-        class_eval <<-EOF, __FILE__, __LINE__
-          def #{tmp_name = MonkeyShield.temp_method_name} *args, &blk
-            if ! MonkeyShield.current_context
-              need_pop = true
-              MonkeyShield.push_context #{context.inspect}
-            end
+    def default_context_for klass, method_name
+      @default_contexts[[klass, method_name]]
+    end
 
-            #{context_switched_name}(*args, &blk)
-          ensure
-            MonkeyShield.pop_context  if need_pop
-          end
-        EOF
-        alias_method method_name, tmp_name
-        remove_method tmp_name
-      end
+    def set_default_context_for klass, method_name, context
+      @default_contexts[[klass, method_name]] = context
     end
 
     def alias_method_added_hooks
@@ -198,7 +137,7 @@ class MonkeyShield
             alias_method old_singleton_method_added, :singleton_method_added
           end
 
-          class_eval <<-EOF, __FILE__, __LINE__
+          class_eval <<-EOF, __FILE__, __LINE__+1
             def __MONKEY__method_added__proxy method_name
               n = MonkeyShield.prevent_recursing_method_added += 1
 
@@ -226,41 +165,21 @@ class MonkeyShield
       @method_added_hooks_aliased = true
     end
 
-    def hook_module_function(&blk)
-      old_module_function = MonkeyShield.unique_method_name(:module_function)
-      Module.class_eval do
-        alias_method old_module_function, :module_function
-        alias_method :module_function, :__MONKEY__module_function
-      end
+    def current_context(level = 0)
+      caller[level] =~ /^(.+):(\d+)(:in `.+$|$)/
+      file, line = File.expand_path($1), $2
 
-      yield
-    ensure
-      Module.class_eval { alias_method :module_function, old_module_function }
-    end
-
-    def context_stack
-      s = Thread.current[:__MONKEY__method_context] and s.dup
-    end
-
-    def push_context(context)
-      (Thread.current[:__MONKEY__method_context] ||= []).push context
-    end
-
-    def pop_context
-      s = Thread.current[:__MONKEY__method_context] and s.pop
-    end
-
-    def current_context
-      s = Thread.current[:__MONKEY__method_context] and s.last
+      context = MonkeyShield.context_locations[file]
     end
 
     def in_context(context, &blk)
-      push_context context
+      orig, self.current_default_context = self.current_default_context, context
       yield
     ensure
-      pop_context
+      self.current_default_context = orig
     end
 
+    # TODO: inline this!
     def prefix_with_context(method_name, context)
       "__MONKEY__context__#{context}__#{method_name}" 
     end
@@ -297,15 +216,8 @@ class MonkeyShield
       @hook_method_added
     end
 
-    def module_calls_super?(klass, method_name)
-      klass.class == Module and 
-        ! (klass.instance_method(method_name).to_sexp.flatten & [:super, :zsuper]).empty?
-    rescue UnsupportedNodeError
-      false
-    end
-
     def context_wrapped?(klass, method_name)
-      !! CONTEXT_WRAPPED_METHODS.has_key?([klass, method_name])
+      !! @context_wrapped_methods.has_key?([klass, method_name])
     end
 
     def warnings
