@@ -23,6 +23,46 @@ describe MonkeyShield do
     eval code, nil, fn
   end
 
+  it "caller should be able to skip method_added methods when determining origin file of method" do
+    MonkeyShield.wrap_with_context :test1 do
+      filename 'test1.rb', %{
+        Object::Levels = Class.new do
+          def level1
+            MonkeyShield.current_context
+          end
+
+          Object.instance_eval { alias oma method_added }
+          Object.instance_eval <<-EOE, 'notmyfile.rb'
+            def method_added(m)
+              oma m
+            end
+          EOE
+
+          def level2
+            MonkeyShield.current_context
+          end
+
+          Object.instance_eval { alias oma1 method_added }
+          Object.instance_eval <<-EOE, 'notmyfile2.rb'
+            def method_added(m)
+              oma1 m
+            end
+          EOE
+
+          def level3
+            MonkeyShield.current_context
+          end
+
+          def levels
+            [level1, level2, level3]
+          end
+        end
+      }
+    end
+
+    MonkeyShield.context_locations.keys.any? {|k| k =~ /notmyfile/ }.should be_false
+  end
+
   it "should automatically detect which methods to context switch" do
     MonkeyShield.wrap_with_context :test1 do
       filename 'test1.rb', %{

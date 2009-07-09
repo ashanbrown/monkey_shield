@@ -8,13 +8,19 @@ describe "MonkeyShield with some real libs" do
     require 'activesupport'  # defines String#each_char
     require 'activerecord'   # load just to see if we get any errors
 
-    class String
+    String.class_eval <<-EOF, 'rails_context'
       def sum
         sum = ""
-        each_char {|c| sum += "#{c}+" }
-        sum.sub(/\+$/,'')
+        each_char {|c| sum += "\#{c}+" }
+        sum.sub(/\\+$/,'')
       end
-    end
+    EOF
+
+    Object.class_eval <<-EOF, 'rails_test'
+      def rails_sum
+        "abc".sum
+      end
+    EOF
   end
 
   MonkeyShield.wrap_with_context :hpricot do
@@ -22,7 +28,7 @@ describe "MonkeyShield with some real libs" do
   end
 
   MonkeyShield.wrap_with_context :my_libs do
-    class String
+    String.class_eval <<-EOF, 'my_libs'
       alias each_char each_byte
 
       def sum
@@ -30,7 +36,13 @@ describe "MonkeyShield with some real libs" do
         each_char {|c| sum += c }
         sum
       end
-    end
+    EOF
+
+    Object.class_eval <<-EOF, 'my_libs_test'
+      def my_libs_sum
+        "abc".sum
+      end
+    EOF
   end
 
   it "should work" do
@@ -38,7 +50,7 @@ describe "MonkeyShield with some real libs" do
     MonkeyShield.context_switch_for String, :each_char
     MonkeyShield.set_default_context_for String, :each_char, :my_libs
 
-    MonkeyShield.in_context(:my_libs) { "abc".sum }.should == 294
-    MonkeyShield.in_context(:rails) { "abc".sum }.should == "a+b+c"
+    my_libs_sum.should == 294
+    rails_sum.should == "a+b+c"
   end
 end

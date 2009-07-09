@@ -35,17 +35,23 @@ class MonkeyShield
       orig_debug, self.debug = self.debug, debug
       Module.class_eval do
         define_method :__MONKEY__method_added do |klass, method_name|
-          MonkeyShield.L { "MA: <#{self}> #{klass}##{method_name}" }
-
-          caller[1] =~ /^(.+):(\d+)(:in `.+$|$)/
-          file, line = File.expand_path($1), $2
-          MonkeyShield.L { "#{method_name} defined on line #{line} of #{file}" }
-
-          MonkeyShield.context_locations[file] = context
+          MonkeyShield.L { "MA: <#{self.name rescue self.object_id}> #{klass.name rescue klass.object_id}##{method_name}" }
 
           return  unless MonkeyShield.hook_method_added?
           return  if exceptions.include? method_name or exceptions.include? "#{klass.name}##{method_name}" or
                      exceptions.any? {|ex| ex.is_a? Regexp and ex =~ method_name.to_s }
+
+          bt = caller
+
+          # our method line should come right after method_added line
+          n = 0
+          n += 1  until bt[n] =~ /`(singleton_)?method_added'/
+
+          if bt[n+1] =~ /^(.+):\d/
+            file = File.expand_path($1) 
+            MonkeyShield.context_locations[file] = context
+            MonkeyShield.L { "#{method_name} defined in #{file}" }
+          end
 
           MonkeyShield.ignore_method_added { MonkeyShield.wrap_method_with_context(klass, method_name, context) }
         end
@@ -166,8 +172,8 @@ class MonkeyShield
     end
 
     def current_context(level = 0)
-      caller[level] =~ /^(.+):(\d+)(:in `.+$|$)/
-      file, line = File.expand_path($1), $2
+      caller[level] =~ /^(.+):\d/
+      file = File.expand_path($1)
 
       context = MonkeyShield.context_locations[file]
     end

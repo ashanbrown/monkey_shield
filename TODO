@@ -1,4 +1,6 @@
-- note you need to context switch yourself if the clashes come throuhg includes and not direect method overwrites
+- tell people that you need to manually specifcy which methods to context switch if the clashes come throuhg includes and not direect method overwrites
+- inline stuff
+- dont need to expand path?
 
 - assume whole file is single context, simplifies everything
   - change tests to use eval with fake filename

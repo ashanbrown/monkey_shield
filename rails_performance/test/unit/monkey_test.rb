@@ -1,27 +1,35 @@
 require File.dirname(__FILE__)+"/../../../lib/monkey_shield"
 
+def filename fn, code
+  eval code, nil, fn
+end
+
 MonkeyShield.wrap_with_context :rails do
   require File.dirname(__FILE__)+"/../test_helper"
 
-  Monkey.delete_all
-  m = Monkey.create :name => 'curious_george'
-  m.name
+  filename 'rails_context.rb', %{
+    Monkey.delete_all
+    m = Monkey.create :name => 'curious_george'
+    m.name
 
-  def monkey_name_in_rails
-    Monkey.first.name
-  end
+    def monkey_name_in_rails
+      Monkey.first.name
+    end
+  }
 end
 
 MonkeyShield.wrap_with_context :test do
-  class Monkey
-    def name
-      "tony"
+  filename 'test_context.rb', %{
+    class Monkey
+      def name
+        "tony"
+      end
     end
-  end
- 
-  def monkey_name_in_test
-    Monkey.first.name
-  end
+   
+    def monkey_name_in_test
+      Monkey.first.name
+    end
+  }
 end
 
 MonkeyShield.context_switch_for Monkey, :name
